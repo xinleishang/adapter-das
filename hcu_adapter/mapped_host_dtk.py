@@ -1,4 +1,5 @@
 import ctypes
+from importlib import import_module
 import logging
 from typing import Tuple
 import torch
@@ -33,6 +34,31 @@ def _hip_runtime():
         return lib
     _HIP_RUNTIME = False
     return None
+
+
+def _engram_registered_device_ptr(host_ptr: int) -> int:
+    hip = _hip_runtime()
+    if hip is None:
+        raise RuntimeError("Engram host table requires the HIP runtime")
+    device_ptr = ctypes.c_void_p()
+    rc = hip.hipHostGetDevicePointer(ctypes.byref(device_ptr), host_ptr, 0)
+    if rc != 0 or not device_ptr.value:
+        raise RuntimeError(f"Engram hipHostGetDevicePointer failed: rc={rc}, host={host_ptr:#x}")
+    return device_ptr.value
+
+
+def install_engram_host_mapping() -> None:
+    if not torch.version.hip:
+        return
+    try:
+        engram = import_module("sglang.srt.layers.engram")
+    except ModuleNotFoundError as exc:
+        if exc.name == "sglang.srt.layers.engram":
+            return
+        raise
+    # CUDA platform semantics must not suppress HIP host address translation.
+    if getattr(engram, "_is_hip", True) is False and hasattr(engram, "_registered_device_ptr"):
+        engram._registered_device_ptr = _engram_registered_device_ptr
 
 
 def _device_ptr_for_host_tensor(tensor: torch.Tensor) -> int:

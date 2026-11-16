@@ -3006,6 +3006,10 @@ def install() -> None:
                 "HCU adapter: DSV4 CT scale loader not installed", exc_info=True,
             )
 
+        from hcu_adapter.mapped_host_dtk import install_engram_host_mapping
+
+        install_engram_host_mapping()
+
         # Import quantization only after operator/vendor setup. The original
         # loader receives a private cast interface; community files stay intact.
         try:
