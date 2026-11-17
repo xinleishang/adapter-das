@@ -16,6 +16,7 @@ from sgl_kernel.elementwise import (
     gelu_and_mul,
     gelu_quick,
     gelu_tanh_and_mul,
+    rope_fp4_fake_quant,
     silu_and_mul,
     silu_and_mul_clamp,
 )
@@ -120,6 +121,7 @@ __all__ = [
     "gemma_rmsnorm",
     "gemma_fused_add_rmsnorm",
     # rope
+    "rope_fp4_fake_quant",
     "rotary_embedding",
     # gemm
     "fp8_scaled_mm",

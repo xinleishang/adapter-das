@@ -21,6 +21,24 @@ import torch
 
 from .compat import HAS_ERF, HAS_TRITON, check_cuda_tensor, next_power_of_2
 
+
+def rope_fp4_fake_quant(
+    x: torch.Tensor,
+    freqs: torch.Tensor,
+    rope_dim: int,
+    compressed_kv: bool = False,
+) -> torch.Tensor:
+    """Forward contiguous BF16 inputs and gathered complex64 freqs to the vendor HIP op."""
+    try:
+        op = torch.ops.sgl_kernel.rope_fp4_fake_quant.default
+    except AttributeError as exc:
+        raise RuntimeError(
+            "rope_fp4_fake_quant requires a vendor sgl_kernel build registering "
+            "sgl_kernel::rope_fp4_fake_quant"
+        ) from exc
+    return op(x, freqs, rope_dim, compressed_kv)
+
+
 _LIGHTOP_IMPL = None  # resolved once: None=probe-pending, (~)=unavailable
 _IMPL_CHOICE = None   # cached backend choice: "lightop" | "torch" | None
 

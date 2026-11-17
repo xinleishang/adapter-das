@@ -7,6 +7,18 @@
 > importlib+pkgutil 遍历，不执行任何核），原始 JSON 存
 > `tmp_fetch/introspect_libs.json` / `introspect2.json`。
 
+## 2026-11-16: DSV4.1 RoPE/FP4 原生接口导出
+
+adapter 的 `sgl_kernel.rope_fp4_fake_quant` 直接转发到已注册的
+`torch.ops.sgl_kernel.rope_fp4_fake_quant.default`，复用 vendor `common_ops.so`
+中的 HIP 实现；不导入同名 vendor Python 包，也不重新实现量化算法。缺少该算子
+的环境会收到明确的 `RuntimeError`，由调用方决定是否回退。
+
+该接口用于对齐 DAS 的执行路径，不代表与 Python 参考逐元素一致：gfx936 上已观察到
+长输入 RoPE 舍入边界及 compressed-KV 小值 scale 差异。桥接回归测试
+`tests/kernels/test_rope_fp4_fake_quant.py` 检查参数转发、原生结果一致性及 Graph 回放，
+不将这些检查等同于模型精度通过。
+
 ## 0. wheel 清单与总览
 
 | 库 | wheel 版本（git 后缀=分叉点） | 定位 | sglang 树接入 | adapter 接入 | 一句话机会 |
