@@ -64,11 +64,30 @@ def emit(line):
         pass  # journal is best-effort observability, never a boot blocker
 
 
+class _BuildSubprocess:
+    def __init__(self, original):
+        self.original = original
+
+    def __getattr__(self, name):
+        return getattr(self.original, name)
+
+    def run(self, command, *args, **kwargs):
+        if isinstance(command, (list, tuple)) and command and pathlib.Path(command[0]).name == "ninja":
+            from hcu_adapter.tvmffi_warmup import _build_env
+
+            environment = kwargs.get("env")
+            kwargs["env"] = _build_env(os.environ if environment is None else environment)
+        return self.original.run(command, *args, **kwargs)
+
+
 def wrap(mod):
     """Monkeypatch ``mod.build`` with the reporting wrapper (idempotent)."""
     real = getattr(mod, "build", None)
     if real is None or getattr(real, _MARK, False):
         return mod
+    subprocess_module = getattr(mod, "subprocess", None)
+    if subprocess_module is not None and not isinstance(subprocess_module, _BuildSubprocess):
+        mod.subprocess = _BuildSubprocess(subprocess_module)
 
     @functools.wraps(real)
     def build(*, spec, build_dir, build_file):

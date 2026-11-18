@@ -3006,8 +3006,9 @@ def install() -> None:
                 "HCU adapter: DSV4 CT scale loader not installed", exc_info=True,
             )
 
-        from hcu_adapter.mapped_host_dtk import install_engram_host_mapping
+        from hcu_adapter.mapped_host_dtk import install_engram_host_mapping, install_hip_library_lookup
 
+        install_hip_library_lookup()
         install_engram_host_mapping()
 
         # Import quantization only after operator/vendor setup. The original

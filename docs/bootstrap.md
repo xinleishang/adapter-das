@@ -383,6 +383,23 @@ curl -s http://127.0.0.1:30000/v1/chat/completions \
 维护注：本文的版本钉与坑清单源自 2026-10-10~14 的多容器实测（models.md
 对应行沿链可查）；镜像换代时先在旧表加注再按新实测修订本文件。
 
+## JIT Ninja Child Isolation (2026-11-17)
+
+The official JIT builder invokes `ninja` through a subprocess. When the
+installed Ninja launcher is Python, inheriting the adapter bootstrap can
+load the full GPU runtime inside a compiler helper. V4.1 HiSparse cold-build
+testing reproduced a successful link followed by `rtnl_tc_unregister` at
+helper exit, making the parent reject the build.
+
+`hcu_adapter/jit_build_log.py` now gives only the official Ninja module a
+private subprocess facade. Ninja commands reuse the existing TVM-FFI clean
+build environment: no `PYTHONPATH`, and both host selectors set to `none`.
+Parent environment, global `subprocess`, non-Ninja commands, timeout,
+compiler flags, device visibility, failures, and existing builder aliases
+are preserved. No official source file is changed. Regression coverage is
+in `tests/adapter/test_jit_build_log.py`. This does not claim to fix native
+library cleanup in the full model process itself.
+
 ## 9. 参考资料
 
 - **DTK 官方文档**(runtime/通信/调试调优,中文):<https://dtk.sourcefind.cn/docs/runtime/zh/latest/index.html>

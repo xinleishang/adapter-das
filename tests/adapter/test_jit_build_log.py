@@ -21,6 +21,7 @@ the L1 kernels segment together with tests/adapter).
 import os
 import sys
 import types
+from unittest.mock import Mock
 
 import pytest
 
@@ -115,6 +116,53 @@ def test_journal_disabled_by_empty_env(tmp_path, monkeypatch):
 
     mod.build(spec=_Spec("m"), build_dir="/d", build_file="bf")
     assert not list(tmp_path.iterdir())  # nothing written anywhere
+
+
+def test_ninja_child_does_not_reenter_adapter_or_change_parent(monkeypatch, journal):
+    monkeypatch.setenv("PYTHONPATH", "/adapter:/official")
+    monkeypatch.setenv("HCU_ADAPTER_HOST", "sglang")
+    monkeypatch.setenv("_HCU_ADAPTER_ACTIVE_HOST", "sglang")
+    monkeypatch.setenv("HIP_VISIBLE_DEVICES", "3")
+    parent = dict(os.environ)
+    run = Mock(return_value="built")
+    subprocess_module = types.SimpleNamespace(run=run, PIPE=-1)
+    mod = types.ModuleType("stub_ninja")
+    mod.subprocess = subprocess_module
+    exec("def build(*, spec, build_dir, build_file):\n    return subprocess.run(['ninja', '-f', build_file], cwd=build_dir, check=False)\n", mod.__dict__)
+    cached_alias = mod.build
+    jit_build_log.wrap(mod)
+    facade = mod.subprocess
+    jit_build_log.wrap(mod)
+    assert mod.subprocess is facade
+    assert mod.subprocess.PIPE == -1
+    assert subprocess_module.run is run
+    assert cached_alias(spec=_Spec("m"), build_dir="/tmp/b", build_file="build.ninja") == "built"
+    env = run.call_args.kwargs["env"]
+    assert "PYTHONPATH" not in env
+    assert env["HCU_ADAPTER_HOST"] == env["_HCU_ADAPTER_ACTIVE_HOST"] == "none"
+    assert env["HIP_VISIBLE_DEVICES"] == "3"
+    assert dict(os.environ) == parent
+
+
+def test_ninja_child_preserves_explicit_environment_and_failure():
+    run = Mock(side_effect=RuntimeError("compile failed"))
+    facade = jit_build_log._BuildSubprocess(types.SimpleNamespace(run=run))
+    env = {"PYTHONPATH": "/adapter", "CC": "compiler", "HCU_ADAPTER_HOST": "sglang"}
+    with pytest.raises(RuntimeError, match="compile failed"):
+        facade.run(["/usr/bin/ninja"], env=env, timeout=30)
+    assert run.call_args.kwargs["env"]["CC"] == "compiler"
+    assert run.call_args.kwargs["env"]["HCU_ADAPTER_HOST"] == "none"
+    assert env["PYTHONPATH"] == "/adapter"
+    assert env["HCU_ADAPTER_HOST"] == "sglang"
+    assert run.call_args.kwargs["timeout"] == 30
+
+
+def test_non_ninja_child_keeps_original_environment():
+    run = Mock()
+    facade = jit_build_log._BuildSubprocess(types.SimpleNamespace(run=run))
+    env = {"PYTHONPATH": "/adapter", "HCU_ADAPTER_HOST": "sglang"}
+    facade.run(["compiler", "input.cpp"], env=env)
+    assert run.call_args.kwargs["env"] is env
 
 
 if __name__ == "__main__":

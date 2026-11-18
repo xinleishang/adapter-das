@@ -34,6 +34,10 @@ Per-subtask #229/#234 findings, the main import surfaces covered:
 """
 
 from hcu_adapter._base import ABSENT, LibStubFinder, is_registered
+from hcu_adapter.flashinfer.sampling import (
+    top_k_renorm_probs,
+    top_p_renorm_probs,
+)
 from sgl_kernel.layernorm import (
     fused_add_rmsnorm as _sgl_fused_add_rmsnorm,
     rmsnorm as _sgl_rmsnorm,
@@ -124,6 +128,8 @@ def register() -> None:
             "flashinfer.sampling": {
                 "min_p_sampling_from_probs": min_p_sampling_from_probs,
                 "softmax": softmax,
+                "top_p_renorm_probs": top_p_renorm_probs,
+                "top_k_renorm_probs": top_k_renorm_probs,
                 "top_k_top_p_sampling_from_probs": top_k_top_p_sampling_from_probs,
             },
         }

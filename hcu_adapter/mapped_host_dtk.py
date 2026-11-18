@@ -1,6 +1,8 @@
 import ctypes
+from functools import wraps
 from importlib import import_module
 import logging
+from os.path import basename
 from typing import Tuple
 import torch
 
@@ -45,6 +47,39 @@ def _engram_registered_device_ptr(host_ptr: int) -> int:
     if rc != 0 or not device_ptr.value:
         raise RuntimeError(f"Engram hipHostGetDevicePointer failed: rc={rc}, host={host_ptr:#x}")
     return device_ptr.value
+
+
+def _install_hip_library_lookup(wrapper):
+    original = getattr(wrapper, "find_loaded_library", None)
+    if original is None or getattr(original, "_hcu_galaxyhip_lookup", False) is True:
+        return
+
+    @wraps(original)
+    def lookup(lib_name):
+        path = original(lib_name)
+        if path is not None or lib_name != "libamdhip64":
+            return path
+        path = original("libgalaxyhip")
+        if path is not None:
+            name = basename(path)
+            if name == "libgalaxyhip.so" or name.startswith("libgalaxyhip.so."):
+                return path
+        return None
+
+    lookup._hcu_galaxyhip_lookup = True
+    wrapper.find_loaded_library = lookup
+
+
+def install_hip_library_lookup():
+    if torch.version.hip:
+        module = "sglang.srt.distributed.device_communicators.cuda_wrapper"
+        try:
+            wrapper = import_module(module)
+        except ModuleNotFoundError as exc:
+            if exc.name == module:
+                return
+            raise
+        _install_hip_library_lookup(wrapper)
 
 
 def install_engram_host_mapping() -> None:
