@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Hygon Information Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
 
-"""KV-cache transfer ops (pure-torch ports) for HCU.
+"""KV-cache transfer ops for HCU.
 
 These mirror sgl_kernel.kvcacheio's CUDA/HIP kernels with the same calling
 contracts. All transfers are index-based gather/scatter over whole token rows:
@@ -18,6 +18,9 @@ contracts. All transfers are index-based gather/scatter over whole token rows:
                 ints) so H2D/D2D can be issued without materializing the
                 all-layer view.
 
+The MLA entrypoints use native AOT operators and require int64 GPU indices,
+registered host buffers, and GPU pointer tables for all-layer transfers.
+Other pure-torch entrypoints below retain their existing compatibility paths.
 _indices are int32/int64 device tensors of flat token-slot ids; transfers are
 exact copies (no dtype conversion; item_size is accepted for API parity).
 The scale of these transfers is host<->device hicache traffic; torch ops keep
@@ -323,8 +326,12 @@ def transfer_kv_per_layer_mla(
 ):
     if block_quota is None:
         block_quota = _default_mla_block_quota()
-    dst_i = dst_indices.to(torch.long)
-    dst[dst_i] = _row_index(src, src_indices).to(dst.dtype)
+    if src_indices.numel() == 0 and dst_indices.numel() == 0:
+        return
+    torch.ops.sgl_kernel.transfer_kv_per_layer_mla.default(
+        src, dst, src_indices, dst_indices, item_size,
+        block_quota, num_warps_per_block,
+    )
 
 
 def transfer_kv_per_layer_mla_pf_lf(
@@ -338,7 +345,14 @@ def transfer_kv_per_layer_mla_pf_lf(
     block_quota: Optional[int] = None,
     num_warps_per_block: int = 16,
 ):
-    transfer_kv_per_layer_mla(src, dst, src_indices, dst_indices, item_size, block_quota)
+    if block_quota is None:
+        block_quota = _default_mla_block_quota()
+    if src_indices.numel() == 0 and dst_indices.numel() == 0:
+        return
+    torch.ops.sgl_kernel.transfer_kv_per_layer_mla_pf_lf.default(
+        src, dst, src_indices, dst_indices, layer_id, item_size,
+        src_layout_dim, block_quota, num_warps_per_block,
+    )
 
 
 def transfer_kv_all_layer_mla(
@@ -351,10 +365,12 @@ def transfer_kv_all_layer_mla(
     block_quota: int = 2,
     num_warps_per_block: int = 16,
 ):
-    src_i = src_indices.to(torch.long)
-    dst_i = dst_indices.to(torch.long)
-    for l in range(num_layers):
-        dst_layers[l][dst_i] = _row_index(src_layers[l], src_i).to(dst_layers.dtype)
+    if src_indices.numel() == 0 and dst_indices.numel() == 0:
+        return
+    torch.ops.sgl_kernel.transfer_kv_all_layer_mla.default(
+        src_layers, dst_layers, src_indices, dst_indices, item_size,
+        num_layers, block_quota, num_warps_per_block,
+    )
 
 
 def transfer_kv_all_layer_mla_lf_pf(
@@ -368,8 +384,11 @@ def transfer_kv_all_layer_mla_lf_pf(
     block_quota: int = 2,
     num_warps_per_block: int = 16,
 ):
-    transfer_kv_all_layer_mla(
-        src_layers, dst, src_indices, dst_indices, item_size, num_layers
+    if src_indices.numel() == 0 and dst_indices.numel() == 0:
+        return
+    torch.ops.sgl_kernel.transfer_kv_all_layer_mla_lf_pf.default(
+        src_layers, dst, src_indices, dst_indices, item_size,
+        dst_layout_dim, num_layers, block_quota, num_warps_per_block,
     )
 
 
